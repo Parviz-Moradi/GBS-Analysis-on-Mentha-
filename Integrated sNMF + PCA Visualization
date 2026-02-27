@@ -1,0 +1,229 @@
+# ====================================================================
+# Mentha: Integrated sNMF + PCA Visualization
+# ====================================================================
+required_pkgs <- c(
+  "data.table","tidyverse","RColorBrewer",
+  "plotly","scatterplot3d","htmlwidgets"
+)
+
+ensure_pkg <- function(pkgs) {
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      install.packages(p, repos = "https://cloud.r-project.org")
+    }
+    suppressPackageStartupMessages(library(p, character.only = TRUE))
+  }
+}
+ensure_pkg(required_pkgs)
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+suppressPackageStartupMessages(library(BiocManager))
+if (!"LEA" %in% rownames(installed.packages())) BiocManager::install("LEA")
+
+args <- commandArgs(trailingOnly = TRUE)
+parse_arg <- function(flag, default = NULL) {
+  hit <- grep(paste0("^", flag, "="), args, value = TRUE)
+  if (length(hit) == 0) return(default)
+  sub(paste0("^", flag, "="), "", hit[1])
+}
+
+in_geno <- parse_arg("--geno", "Mint_structure_100.geno")    # ipyrad .geno (diploid) file
+in_samples<- parse_arg("--samples","sample_info_fixed.txt")  # tab-delim with columns: name, species
+outdir    <- parse_arg("--out",    "out")
+kmin      <- as.integer(parse_arg("--kmin", "2"))
+kmax      <- as.integer(parse_arg("--kmax", "13"))
+plotKs_in <- parse_arg("--plotKs", "3,4,5")            # comma-separated, e.g., "3,4,5"
+plotKs    <- as.integer(strsplit(plotKs_in, ",")[[1]])
+reps      <- as.integer(parse_arg("--reps", "20"))
+seed      <- as.integer(parse_arg("--seed", "123"))
+
+dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+set.seed(seed)
+
+## ---- Helper: safe write ----
+writetsv <- function(x, file) {
+  data.table::fwrite(x, file = file, sep = "\t", quote = FALSE, na = "NA")
+}
+
+## ---- Read inputs ----
+if (!file.exists(in_geno)) stop("Missing --geno file: ", in_geno)
+if (!file.exists(in_samples)) stop("Missing --samples file: ", in_samples)
+
+samples <- data.table::fread(in_samples, header = TRUE)
+needed <- c("name","species")
+if (!all(needed %in% names(samples))) {
+  stop("`sample_info.txt` must have columns: name, species")
+}
+samples <- samples[, ..needed]
+
+## Convert .geno -> .lfmm matrix (LEA)
+GBS_data <- LEA::geno2lfmm(in_geno)
+
+## Validate sample count
+n_samples_geno <- nrow(GBS_data)
+if (nrow(samples) != n_samples_geno) {
+  stop("Sample count mismatch: geno has ", n_samples_geno,
+       " rows but samples has ", nrow(samples), ". Ensure same order & count.")
+}
+
+## ---- PCA ----
+message("Running PCA ...")
+pc <- LEA::pca(GBS_data, K = 4, center = TRUE, scale = FALSE)
+pc_proj <- as.data.frame(pc$projections)
+colnames(pc_proj)[1:4] <- c("PC1","PC2","PC3","PC4")
+pc_tbl <- dplyr::bind_cols(samples, pc_proj)
+
+# Variance explained
+eigs <- pc$sdev^2
+pct_var <- 100 * eigs / sum(eigs)
+
+## Save PCA outputs
+writetsv(pc_tbl, file.path(outdir, "PCA_joined.tsv"))
+writetsv(data.frame(component = paste0("PC", seq_along(eigs)), stdev = pc$sdev, variance = eigs, percent = pct_var),
+         file.path(outdir, "PCA_variance.tsv"))
+
+## ---- PCA plots ----
+message("Saving PCA plots ...")
+# 2D ggplot by species
+species_levels <- unique(pc_tbl$species)
+pal_species <- setNames(
+  grDevices::colorRampPalette(RColorBrewer::brewer.pal(min(8, max(3, length(species_levels))), "Set2"))(length(species_levels)),
+  species_levels
+)
+
+p2d <- ggplot2::ggplot(pc_tbl, aes(PC1, PC2, color = species)) +
+  ggplot2::geom_point(size = 2.8, alpha = 0.9) +
+  ggplot2::scale_color_manual(values = pal_species) +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::labs(title = "PCA: PC1 vs PC2 (colored by species)",
+                x = sprintf("PC1 (%.2f%%)", pct_var[1]),
+                y = sprintf("PC2 (%.2f%%)", pct_var[2]),
+                color = "Species")
+ggplot2::ggsave(file.path(outdir, "PCA_PC1_PC2_species.pdf"), p2d, width = 7, height = 5)
+
+# 3D interactive by species (one trace per species)
+p3d <- plotly::plot_ly()
+for (sp in species_levels) {
+  d <- pc_tbl[pc_tbl$species == sp, ]
+  p3d <- p3d %>% plotly::add_trace(
+    data = d, x = ~PC1, y = ~PC2, z = ~PC3,
+    type = "scatter3d", mode = "markers",
+    marker = list(size = 4),
+    name = sp, legendgroup = sp
+  )
+}
+p3d <- p3d %>% plotly::layout(
+  scene = list(
+    xaxis = list(title = sprintf("PC1 (%.2f%%)", pct_var[1])),
+    yaxis = list(title = sprintf("PC2 (%.2f%%)", pct_var[2])),
+    zaxis = list(title = sprintf("PC3 (%.2f%%)", pct_var[3]))
+  )
+)
+htmlwidgets::saveWidget(p3d, file.path(outdir, "PCA_3D_species.html"), selfcontained = TRUE)
+
+# Static 3D with % variance
+pdf(file.path(outdir, "PCA_3D_species_static.pdf"), width = 7, height = 6)
+scatterplot3d::scatterplot3d(
+  x = pc_tbl$PC1, y = pc_tbl$PC2, z = pc_tbl$PC3,
+  color = pal_species[pc_tbl$species], pch = 19, type = "p",
+  main = "3-D PCA (species)",
+  xlab = sprintf("PC1 (%.2f%%)", pct_var[1]),
+  ylab = sprintf("PC2 (%.2f%%)", pct_var[2]),
+  zlab = sprintf("PC3 (%.2f%%)", pct_var[3])
+)
+legend("topright", legend = species_levels, fill = pal_species, cex = 0.8, bty = "n")
+dev.off()
+
+## ---- sNMF (LEA) ----
+message("Running sNMF ...")
+if (kmin < 2) stop("--kmin must be >= 2")
+if (kmax < kmin) stop("--kmax must be >= --kmin")
+if (any(plotKs < kmin | plotKs > kmax)) {
+  stop("--plotKs must be within the range [kmin, kmax]")
+}
+
+obj.snmf <- LEA::snmf(GBS_data, K = kmin:kmax, entropy = TRUE,
+                      repetitions = reps, ploidy = 2, project = "new")
+
+## Evaluate cross-entropy for all K and reps, store table
+all_ce <- lapply(kmin:kmax, function(K) {
+  ce <- LEA::cross.entropy(obj.snmf, K = K)
+  data.frame(K = K, run = seq_along(ce), cross_entropy = ce)
+}) %>% dplyr::bind_rows()
+writetsv(all_ce, file.path(outdir, "sNMF_cross_entropy.tsv"))
+
+best_run_for_K <- function(obj, K) {
+  ce <- LEA::cross.entropy(obj, K = K)
+  which.min(ce)
+}
+
+## ---- Q plotting helpers ----
+plot_Q_base <- function(obj, K, labels, out_file) {
+  br <- best_run_for_K(obj, K)
+  Qk <- LEA::Q(obj, K = K, run = br)
+  # Order samples by max assignment within K (nicer bars)
+  ord <- order(apply(Qk, 1, which.max), -apply(Qk, 1, max))
+  Qk <- Qk[ord, , drop = FALSE]
+  labels_ord <- labels[ord]
+  
+  palK <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(8, "Set3"))(K)
+  grDevices::pdf(out_file, width = 10, height = 4)
+  op <- par(mar = c(7, 4, 2, 1) + 0.1)
+  barplot(t(Qk), col = palK, border = NA, space = 0, axes = FALSE,
+          names.arg = labels_ord, las = 2, cex.names = 0.55,
+          main = sprintf("Ancestry coefficients (K=%d), best run #%d", K, br),
+          ylab = "Ancestry")
+  axis(2, las = 2)
+  par(op)
+  grDevices::dev.off()
+}
+
+plot_Q_faceted_by_species <- function(obj, K, sample_names, species, out_file) {
+  br <- best_run_for_K(obj, K)
+  Qk <- as.data.frame(LEA::Q(obj, K = K, run = br))
+  colnames(Qk) <- paste0("A", seq_len(K))
+  Qk$name <- sample_names
+  Qk$species <- species
+  # Order samples within species by max assignment
+  order_tbl <- Qk %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(maxq = max(c_across(starts_with("A")))) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(species, dplyr::desc(maxq)) %>%
+    dplyr::mutate(ord = dplyr::row_number()) %>%
+    dplyr::select(name, species, ord)
+  
+  long <- tidyr::pivot_longer(Qk, dplyr::starts_with("A"),
+                              names_to = "cluster", values_to = "q") %>%
+    dplyr::left_join(order_tbl, by = c("name","species"))
+  
+  palK <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(8, "Set3"))(K)
+  
+  p <- ggplot2::ggplot(long, aes(x = ord, y = q, fill = cluster)) +
+    ggplot2::geom_col(width = 1) +
+    ggplot2::facet_grid(~ species, scales = "free_x", space = "free_x") +
+    ggplot2::scale_fill_manual(values = palK) +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.001, 0.001))) +
+    ggplot2::labs(title = sprintf("sNMF Q (K=%d) â best run #%d", K, br),
+                  x = NULL, y = "Ancestry") +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      strip.background = element_rect(fill = "grey95", colour = "grey80"),
+      axis.text.x = element_blank(),
+      panel.spacing.x = unit(0.4, "lines")
+    )
+  ggplot2::ggsave(out_file, p, width = 12, height = 4 + 0.3 * length(unique(species)))
+}
+
+## ---- Plot only the Ks you want ----
+message("Plotting requested Ks: ", paste(plotKs, collapse = ", "))
+for (K in plotKs) {
+  plot_Q_base(obj.snmf, K, labels = samples$name,
+              out_file = file.path(outdir, sprintf("Q_barplot_base_K%d.pdf", K)))
+  plot_Q_faceted_by_species(obj.snmf, K,
+                            sample_names = samples$name,
+                            species = samples$species,
+                            out_file = file.path(outdir, sprintf("Q_faceted_species_K%d.pdf", K)))
+}
+
+## ---- Done ----
+message("All done. Outputs in: ", normalizePath(outdir))
