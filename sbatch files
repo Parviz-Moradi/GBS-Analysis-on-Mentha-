@@ -1,0 +1,7 @@
+•	S1: sabre_demultiplex.sbatch – Demultiplexing raw reads.
+•	S2: trimming.sbatch – Adapter trimming and FastQC quality control.
+•	S3: params_Clade2_3.txt – IPyRAD parameters file.
+•	S4: ipyrad_Mentha2.sh – IPyRAD SLURM job script.
+•	S5: iqtree_mint.sbatch – IQ-TREE phylogenetic analysis SLURM script.
+•	S6: ipyrad_final.sh – SLURM script for the final filtered IPyRAD assembly.
+•	S7: iqtree_final.sbatch – SLURM script for the final IQ-TREE phylogenetic analysis on the filtered dataset.
