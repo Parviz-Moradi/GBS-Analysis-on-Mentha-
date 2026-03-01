@@ -1,8 +1,50 @@
-# Field hub
-# Dr. Parviz Moradi
+# Field hub and the randomization plan
 install.packages("FielDHub")
 library(FielDHub)
 alpha <- alpha_lattice(t=240, r=3, k=4, l=1, plotNumber = 1001,
                        locationNames = 'Quedlinburg', seed=100)
 plot(alpha)
 plot(alpha, stacked='vertical', layout=3)
+
+
+# Install and load the agricolae package
+install.packages("agricolae")
+library(agricolae)
+
+# Set the number of treatments and rows
+num_treatments <- 248
+num_rows <- 3
+
+# Generate treatment labels
+treatment_labels <- paste0("ME", sprintf("%03d", 1:num_treatments))
+
+# Treatments to exclude
+exclude_treatments <- c("ME088", "ME118", "ME151", "ME179", "ME189","ME207", "ME225",  
+                        "ME229", "ME231", "ME234", "ME239", "ME241")
+
+# Exclude specified treatments
+treatment_labels <- setdiff(treatment_labels, exclude_treatments)
+
+# Set the number of blocks (1 replicate)
+num_blocks <- 1
+
+# Randomly shuffle treatment labels within blocks
+random_treatments <- sample(treatment_labels, length(treatment_labels), replace = FALSE)
+
+# Split the shuffled treatments into rows
+randomization_plan <- matrix(random_treatments, nrow = num_rows)
+
+# View the randomization plan
+print(randomization_plan)
+install.packages("kableExtra")
+library(kableExtra)
+# Convert the randomization plan matrix to a data frame
+randomization_df <- as.data.frame(randomization_plan)
+
+# Add row names as a column
+randomization_df$Row <- rownames(randomization_plan)
+
+# Use kable with kableExtra for nice formatting
+kable(randomization_df, align = "c", caption = "Randomization Plan") %>%
+  kable_styling(full_width = FALSE)
+
