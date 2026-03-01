@@ -1,0 +1,8 @@
+# Field hub
+# Dr. Parviz Moradi
+install.packages("FielDHub")
+library(FielDHub)
+alpha <- alpha_lattice(t=240, r=3, k=4, l=1, plotNumber = 1001,
+                       locationNames = 'Quedlinburg', seed=100)
+plot(alpha)
+plot(alpha, stacked='vertical', layout=3)
