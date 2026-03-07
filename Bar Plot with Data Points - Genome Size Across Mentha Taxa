@@ -1,0 +1,305 @@
+# Script written by Dr. Parviz Moradi
+# Bar Plot with Data Points - Genome Size Across Mentha Taxa ----------------
+
+pacman::p_load(ggplot2, ggtext, dplyr, forcats)
+
+# ── 1. Data ----------------------------------------------------------------
+data <- tibble::tribble(
+  ~Accession, ~Taxon,                 ~GenomeSize,
+  1,  "M. × piperita",      3.25,
+  2,  "M. × piperita",      2.82,
+  3,  "M. × piperita",      3.25,
+  4,  "M. × piperita",      3.11,
+  5,  "M. spicata",         1.37,
+  6,  "M. × piperita",      3.24,
+  7,  "M. × piperita",      3.19,
+  8,  "M. × piperita",      3.13,
+  9,  "M. × piperita",      3.20,
+  10, "M. spicata",         1.40,
+  11, "M. × piperita",      3.18,
+  12, "M. × gracilis",      2.25,
+  13, "M. spicata",         2.34,
+  14, "M. × suavis",        4.42,
+  15, "M. spicata",         2.22,
+  16, "Unknown",            2.86,
+  17, "M. aquatica",        2.81,
+  18, "Unknown",            4.12,
+  21, "M. × piperita",      3.18,
+  22, "M. longifolia",      1.73,
+  23, "M. × piperita",      2.48,
+  24, "M. aquatica",        3.10,
+  25, "M. × piperita",      2.42,
+  27, "M. × rotundifolia",  0.77,
+  28, "M. spicata",         1.74,
+  29, "M. × piperita",      3.09,
+  30, "M. × piperita",      3.17,
+  34, "M. × piperita",      4.34,
+  35, "M. suaveolens",      3.71,
+  36, "M. × piperita",      2.57,
+  38, "M. spicata",         1.23,
+  40, "M. spicata",         2.62,
+  42, "M. spicata",         1.23,
+  48, "M. × piperita",      3.30,
+  49, "M. spicata",         1.63,
+  50, "M. × gracilis",      2.36,
+  51, "M. × piperita",      3.35,
+  55, "M. × piperita",      3.27,
+  57, "M. spicata",         1.23,
+  58, "M. × rotundifolia",  0.85,
+  59, "M. × suavis",        2.39,
+  60, "M. × rotundifolia",  1.49,
+  61, "M. spicata",         1.73,
+  62, "M. spicata",         1.43,
+  64, "M. × piperita",      2.49,
+  65, "M. spicata",         1.31,
+  66, "M. × rotundifolia",  0.75,
+  68, "M. spicata",         1.23,
+  69, "M. × piperita",      3.36,
+  71, "M. × piperita",      3.18,
+  74, "M. × gracilis",      3.33,
+  81, "M. × piperita",      3.03,
+  83, "M. spicata",         1.31,
+  84, "M. × piperita",      3.51,
+  92, "M. × villosa",       1.34,
+  93, "M. suaveolens",      0.92,
+  94, "M. × dumetorum",     3.05,
+  95, "M. × suavis",        2.37,
+  96, "M. × rotundifolia",  0.93,
+  97, "M. aquatica",        3.02,
+  98, "M. aquatica",        3.04,
+  100,"M. longifolia",      1.67,
+  101,"M. × gracilis",      2.33,
+  103,"M. × villosa",       1.32,
+  104,"M. spicata",         1.75,
+  105,"M. × piperita",      3.07,
+  106,"M. × piperita",      0.92,
+  107,"M. × rotundifolia",  1.34,
+  111,"M. × piperita",      3.51,
+  114,"M. × piperita",      3.07,
+  122,"M. × dalmatica",     1.94,
+  123,"M. suaveolens",      0.94,
+  124,"M. suaveolens",      0.98,
+  125,"Unknown",            1.69,
+  126,"M. longifolia",      1.32,
+  128,"M. longifolia",      1.32,
+  129,"M. × rotundifolia",  0.95,
+  130,"M. suaveolens",      0.90,
+  131,"M. longifolia",      1.00,
+  132,"M. longifolia",      1.43,
+  133,"M. × rotundifolia",  1.38,
+  134,"M. spicata",         1.75,
+  135,"M. × gracilis",      2.07,
+  136,"M. × gracilis",      2.35,
+  138,"M. spicata",         1.64,
+  140,"M. × rotundifolia",  2.04,
+  141,"M. spicata",         1.60,
+  142,"M. × rotundifolia",  1.32,
+  143,"M. longifolia",      1.43,
+  145,"M. × carinthiaca",   2.00,
+  146,"M. × rotundifolia",  0.93,
+  147,"M. longifolia",      1.65,
+  150,"M. × piperita",      2.32,
+  152,"M. × rotundifolia",  0.79,
+  154,"M. spicata",         1.72,
+  155,"M. × gracilis",      2.42,
+  156,"M. spicata",         1.74,
+  157,"M. × rotundifolia",  1.36,
+  158,"M. longifolia",      1.71,
+  161,"M. spicata",         1.63,
+  162,"M. × piperita",      2.53,
+  163,"M. × rotundifolia",  2.22,
+  165,"M. × rotundifolia",  2.88,
+  166,"M. aquatica",        2.70,
+  169,"M. × gracilis",      2.60,
+  171,"M. × piperita",      3.07,
+  172,"M. × rotundifolia",  1.35,
+  175,"M. × dalmatica",     2.25,
+  177,"M. spicata",         1.23,
+  178,"M. capensis",        1.78,
+  180,"M. × gracilis",      2.49,
+  181,"M. suaveolens",      0.97,
+  183,"M. × gracilis",      2.38,
+  186,"M. × piperita",      3.51,
+  188,"M. spicata",         1.53,
+  189,"Unknown",            1.23,
+  191,"M. × piperita",      3.03,
+  192,"M. × piperita",      3.51,
+  194,"M. × rotundifolia",  1.34,
+  195,"M. longifolia",      1.67,
+  196,"M. × rotundifolia",  1.34,
+  197,"M. × piperita",      3.51,
+  198,"M. × smithiana",     2.40,
+  201,"M. × piperita",      3.51,
+  202,"M. × piperita",      3.03,
+  203,"M. × piperita",      3.51,
+  207,"Unknown",            2.25,
+  210,"M. longifolia",      1.48,
+  215,"M. × piperita",      3.51,
+  217,"M. longifolia",      1.72,
+  218,"M. longifolia",      1.25,
+  219,"M. spicata",         1.63
+)
+
+# ── 2. Classify taxa as Pure Species, Hybrid, or Unknown ------------------
+pure_species <- c("M. spicata", "M. longifolia", "M. suaveolens",
+                  "M. aquatica", "M. capensis")
+
+data <- data %>%
+  mutate(
+    Category = case_when(
+      Taxon %in% pure_species ~ "Pure Species",
+      Taxon == "Unknown"      ~ "Unknown",
+      TRUE                    ~ "Hybrid"
+    )
+  )
+
+# ── 3. Summary stats (mean ± SE per taxon) --------------------------------
+summary_stats <- data %>%
+  group_by(Taxon, Category) %>%
+  summarise(
+    Mean = mean(GenomeSize, na.rm = TRUE),
+    SE   = sd(GenomeSize,   na.rm = TRUE) / sqrt(n()),
+    n    = n(),
+    .groups = "drop"
+  ) %>%
+  # Order taxa by mean genome size within each category
+  arrange(Category, Mean) %>%
+  mutate(Taxon = fct_inorder(Taxon))
+
+# Apply the same factor order to the raw data
+data <- data %>%
+  mutate(Taxon = factor(Taxon, levels = levels(summary_stats$Taxon)))
+
+# ── 4. Colour palette: green = pure species, blue = hybrid, grey = unknown -
+category_colours <- c(
+  "Pure Species" = "#2E8B57",   # forest green
+  "Hybrid"       = "#2166AC",   # steel blue
+  "Unknown"      = "#888888"    # grey
+)
+
+# ── 5. Italic taxon labels for x-axis ------------------------------------
+taxon_labels <- levels(summary_stats$Taxon)
+italic_labels <- setNames(
+  paste0("*", taxon_labels, "*"),
+  taxon_labels
+)
+
+# ── 6. Plot ---------------------------------------------------------------
+windows ()
+# ── 6. Enhanced Plot with Filled Points & Black Borders -------------------
+category_colours <- c(
+  "Pure Species" = "#39FF14",   # Phosphorescent green
+  "Hybrid"       = "#FF0000",   # Custom sky blue
+  "Unknown"      = "#A9A9A9"    # Dark grey
+)
+
+p <- ggplot() +
+  
+  # Bars (mean genome size)
+  geom_col(
+    data    = summary_stats,
+    aes(x = Taxon, y = Mean, fill = Category),
+    alpha   = 0.75,
+    width   = 0.65
+  ) +
+  
+  # Error bars (± SE)
+  geom_errorbar(
+    data  = summary_stats,
+    aes(x = Taxon, ymin = Mean - SE, ymax = Mean + SE, colour = Category),
+    width = 0.25,
+    linewidth = 0.9
+  ) +
+  
+  # Individual data points (jittered) matching bar color, black border
+  geom_jitter(
+    data   = data,
+    aes(x = Taxon, y = GenomeSize, fill = Category),
+    colour = "black",        # black border
+    shape  = 21,             # circle with fill and border
+    size   = 3.0,            # larger points
+    stroke = 0.5,            # border thickness
+    width  = 0.18,
+    alpha  = 0.85
+  ) +
+  
+  # Sample size labels above bars
+  geom_text(
+    data  = summary_stats,
+    aes(x = Taxon, y = Mean + SE + 0.12, label = paste0("n=", n)),
+    size  = 3.2,
+    colour = "grey30",
+    fontface = "bold"
+  ) +
+  
+  # Horizontal reference line for ploidy
+  geom_hline(yintercept = 2.0, linetype = "dashed",
+             colour = "grey50", linewidth = 0.45) +
+  annotate("text", x = 0.5, y = 2.08, label = "~2C threshold",
+           hjust = 0, size = 3.0, colour = "grey40", fontface = "italic") +
+  
+  # Scales
+  scale_fill_manual(values   = category_colours, name = "Taxon category") +
+  scale_colour_manual(values = category_colours, name = "Taxon category") +
+  scale_x_discrete(labels = italic_labels) +
+  scale_y_continuous(
+    limits = c(0, 5.0),
+    breaks = seq(0, 5, 0.5),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  
+  # Labels
+  labs(
+    x = NULL,
+    y = "Nuclear genome size (2C, pg)",
+    caption = "Bars = mean ± SE. Points = individual accessions.\nDashed line = approximate 2C diploid/polyploid threshold (~2.0 pg)."
+  ) +
+  
+  # Theme enhancements
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x      = element_markdown(angle = 45, hjust = 1, vjust = 1,
+                                        size = 10, face = "bold"),
+    axis.text.y      = element_text(size = 11, face = "bold"),
+    axis.title.y     = element_text(size = 12, face = "bold", margin = margin(r = 8)),
+    axis.line        = element_line(colour = "grey30", linewidth = 0.6),
+    legend.position  = "top",
+    legend.title     = element_text(size = 10, face = "bold"),
+    legend.text      = element_text(size = 9.5),
+    legend.key.size  = unit(0.5, "cm"),
+    plot.caption     = element_text(size = 8, colour = "grey45",
+                                    hjust = 0, margin = margin(t = 8)),
+    panel.grid.major.y = element_line(colour = "grey92", linewidth = 0.35),
+    plot.margin      = margin(10, 15, 10, 10)
+  )
+p
+
+# ── 7. Save ---------------------------------------------------------------
+ggsave(
+  filename = "Genome_Size_BarPlot.png",
+  plot     = p,
+  width    = 14,
+  height   = 7,
+  dpi      = 300,
+  bg       = "white"
+)
+
+ggsave(
+  filename = "Genome_Size_BarPlot.pdf",
+  plot     = p,
+  width    = 14,
+  height   = 7,
+  device   = cairo_pdf
+)
+
+message("Plot saved as Genome_Size_BarPlot.png and .pdf")
+
+# ── 8. Summary table (for manuscript) ------------------------------------
+summary_table <- summary_stats %>%
+  mutate(
+    Mean_SD = paste0(round(Mean, 2), " ± ", round(SE, 2))
+  ) %>%
+  select(Category, Taxon, n, Mean_SD, Mean, SE) %>%
+  arrange(Category, Mean)
+
+print(summary_table, n = Inf)
