@@ -1,0 +1,268 @@
+# ============================================================
+# Section 3.5 Figures: Genome Size × Genomic Structure
+# Requires: ggplot2, dplyr, tidyr, patchwork, scales
+# ============================================================
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+install.packages("patchwork")
+library(patchwork)
+library(scales)
+
+
+# Load the existing sNMF project (adjust path if needed)
+obj.snmf <- load.snmfProject("Mint_structure_100.snmfProject")
+
+# Find best run for K=3
+ce <- cross.entropy(obj.snmf, K = 3)
+best_run <- which.min(ce)
+cat("Best run for K=3:", best_run, "\n")
+
+# Extract Q-matrix
+Qmat <- as.data.frame(Q(obj.snmf, K = 3, run = best_run))
+colnames(Qmat) <- c("A1", "A2", "A3")
+
+# Load your sample info and bind
+samples <- read.table("sample_info_fixed.txt", header = TRUE, sep = "\t")
+Qmat <- cbind(samples[, c("name", "species")], Qmat)
+
+# Save
+write.table(Qmat, "Q_matrix_K3.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+cat("Saved Q_matrix_K3.tsv\n")
+
+# ── 0. Load data ─────────────────────────────────────────────
+# Adjust paths as needed
+qmat  <- read.table("Q_matrix_K3.tsv",  header = TRUE, sep = "\t")
+pca   <- read.table("PCA_joined.tsv",   header = TRUE, sep = "\t")
+
+# Extract genome size from accession name (last field after "_")
+qmat <- qmat %>%
+  mutate(
+    gs = suppressWarnings(as.numeric(sub(".*_([0-9.]+)$", "\\1", name))),
+    dominant = case_when(
+      A1 >= A2 & A1 >= A3 ~ "A1",
+      A2 >= A1 & A2 >= A3 ~ "A2",
+      TRUE                 ~ "A3"
+    ),
+    dominant = factor(dominant, levels = c("A1", "A2", "A3"))
+  )
+
+# Merge PCA coords
+merged <- left_join(qmat, pca %>% select(name, PC1, PC2), by = "name")
+
+# ── Colour palettes ───────────────────────────────────────────
+cluster_cols <- c(
+  A1 = "#E07B54",
+  A2 = "#5B8DB8",
+  A3 = "#6AAB6E"
+)
+
+species_cols <- c(
+  "M.xpiperita"    = "#E07B54",
+  "M.aquatica"     = "#5B8DB8",
+  "M.spicata"      = "#6AAB6E",
+  "M.longofolia"   = "#A0C878",
+  "M.suaveolens"   = "#B0D9B1",
+  "M.xrotundifolia"= "#CFB8E8",
+  "M.xgracilis"    = "#F5C07A",
+  "M.xvillosa"     = "#88BBDD",
+  "M.xsuavis"      = "#D4845A",
+  "Unknown"        = "#AAAAAA"
+)
+
+theme_pub <- theme_classic(base_size = 11) +
+  theme(
+    axis.title      = element_text(size = 11),
+    legend.text     = element_text(size = 8),
+    legend.key.size = unit(0.45, "cm"),
+    plot.title      = element_text(face = "bold", size = 12)
+  )
+
+# ============================================================
+# FIGURE 7 – Panel A: GS vs A3 ancestry
+# ============================================================
+has_gs <- filter(qmat, !is.na(gs))
+
+lm_fit  <- lm(gs ~ A3, data = has_gs)
+r_val   <- cor(has_gs$gs, has_gs$A3)
+p_val   <- summary(lm_fit)$coefficients[2, 4]
+ptext   <- ifelse(p_val < 0.001, "p < 0.001", sprintf("p = %.3f", p_val))
+ann_lab <- sprintf("r = %.3f\n%s", r_val, ptext)
+
+pA <- ggplot(has_gs, aes(x = A3, y = gs)) +
+  geom_point(aes(colour = species), size = 2.5, alpha = 0.8) +
+  geom_smooth(method = "lm", colour = "grey30", linewidth = 0.9,
+              linetype = "dashed", se = FALSE) +
+  scale_colour_manual(values = species_cols, na.value = "#AAAAAA",
+                      name = NULL) +
+  annotate("label", x = 0.97, y = 4.8, label = ann_lab,
+           hjust = 1, vjust = 1, size = 3.2,
+           fill = "white", label.size = 0.3) +
+  scale_x_continuous(limits = c(-0.02, 1.02)) +
+  scale_y_continuous(limits = c(0, 5.1)) +
+  labs(x = "A3 ancestry proportion",
+       y = "Genome size (2C, pg)",
+       title = "A") +
+  theme_pub +
+  theme(legend.position = "right",
+        legend.text = element_text(size = 7.5))
+
+# ── Panel B: Boxplot GS by cluster ───────────────────────────
+# t-test A1 vs A3
+tt <- t.test(gs ~ dominant,
+             data = filter(has_gs, dominant %in% c("A1","A3")))
+sig <- ifelse(tt$p.value < 0.001, "***",
+              ifelse(tt$p.value < 0.01, "**", "*"))
+
+cluster_summary <- has_gs %>%
+  group_by(dominant) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(label = paste0(dominant, "\n(n=", n, ")"))
+
+has_gs2 <- left_join(has_gs, cluster_summary, by = "dominant")
+
+y_max <- max(has_gs$gs, na.rm = TRUE) + 0.3
+
+pB <- ggplot(has_gs2, aes(x = dominant, y = gs, fill = dominant)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.75, width = 0.5,
+               colour = "grey30", linewidth = 0.5) +
+  geom_jitter(aes(colour = dominant), width = 0.12, alpha = 0.45,
+              size = 1.6) +
+  # Significance bracket
+  annotate("segment", x = 1, xend = 3,
+           y = y_max + 0.05, yend = y_max + 0.05, colour = "grey30") +
+  annotate("segment", x = 1, xend = 1,
+           y = y_max,       yend = y_max + 0.05, colour = "grey30") +
+  annotate("segment", x = 3, xend = 3,
+           y = y_max,       yend = y_max + 0.05, colour = "grey30") +
+  annotate("text", x = 2, y = y_max + 0.15, label = sig, size = 5) +
+  scale_fill_manual(values = cluster_cols, guide = "none") +
+  scale_colour_manual(values = cluster_cols, guide = "none") +
+  scale_x_discrete(labels = setNames(cluster_summary$label,
+                                     cluster_summary$dominant)) +
+  scale_y_continuous(limits = c(0, 5.5)) +
+  labs(x = NULL, y = "Genome size (2C, pg)", title = "B") +
+  theme_pub
+
+# ── Panel C: Admixture bars for M.xpiperita ordered by GS ────
+pip_gs <- qmat %>%
+  filter(species == "M.xpiperita", !is.na(gs)) %>%
+  arrange(gs) %>%
+  mutate(idx = row_number())
+
+pip_long <- pip_gs %>%
+  pivot_longer(cols = c(A1, A2, A3),
+               names_to = "cluster", values_to = "q") %>%
+  mutate(cluster = factor(cluster, levels = c("A1","A2","A3")))
+
+# Secondary-axis scaling
+gs_range  <- range(pip_gs$gs)
+bar_range <- c(0, 1)
+scale_gs  <- function(x) (x - gs_range[1]) /
+  (gs_range[2] - gs_range[1]) * diff(bar_range) + bar_range[1]
+unscale_gs <- function(x) x * (gs_range[2] - gs_range[1]) + gs_range[1]
+
+pip_gs_line <- pip_gs %>%
+  mutate(gs_scaled = scale_gs(gs))
+
+pC <- ggplot() +
+  geom_col(data = pip_long,
+           aes(x = idx, y = q, fill = cluster),
+           width = 1.0, position = "stack") +
+  geom_line(data = pip_gs_line,
+            aes(x = idx, y = gs_scaled),
+            colour = "grey10", linewidth = 0.9) +
+  geom_point(data = pip_gs_line,
+             aes(x = idx, y = gs_scaled),
+             colour = "grey10", size = 1.5) +
+  scale_fill_manual(values = cluster_cols,
+                    labels = c("A1 (large-genome)",
+                               "A2 (intermediate)",
+                               "A3 (small-genome)"),
+                    name = NULL) +
+  scale_y_continuous(
+    name   = "Ancestry proportion",
+    limits = c(0, 1),
+    sec.axis = sec_axis(~ unscale_gs(.),
+                        name = "Genome size (2C, pg)")
+  ) +
+  scale_x_continuous(expand = c(0.01, 0.01)) +
+  labs(x = expression(paste(italic("M. "), "\u00d7", italic("piperita"),
+                            " accessions (ordered by genome size, n=24)")),
+       title = "C") +
+  theme_pub +
+  theme(axis.text.x  = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "bottom",
+        legend.text = element_text(size = 9))
+
+# ── Combine Figure 7 panel 1 ──────────────────────────────────
+fig7a <- (pA | pB | pC) +
+  plot_annotation(
+    title = "Figure 7. Genome size and population structure in Mentha",
+    theme = theme(plot.title = element_text(face = "bold", size = 12))
+  ) +
+  plot_layout(widths = c(1.4, 0.9, 1.2))
+
+ggsave("Figure_7_GS_Genomics.pdf", fig7a, width = 16, height = 5.5,
+       device = cairo_pdf)
+ggsave("Figure_7_GS_Genomics.png", fig7a, width = 16, height = 5.5,
+       dpi = 300)
+
+# ============================================================
+# FIGURE 7 (continued) – PCA panels
+# ============================================================
+
+pca_merged <- merged %>% filter(!is.na(PC1))
+
+# Panel D: PCA by cluster
+pD <- ggplot(pca_merged, aes(x = PC1, y = PC2, colour = dominant)) +
+  geom_point(size = 2.2, alpha = 0.8) +
+  scale_colour_manual(values = cluster_cols,
+                      labels = c("A1 (large-genome / M.\u00d7piperita)",
+                                 "A2 (intermediate)",
+                                 "A3 (small-genome lineage)"),
+                      name = NULL) +
+  labs(x = "PC1", y = "PC2",
+       title = "D  PCA coloured by dominant cluster") +
+  theme_pub +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 8.5))
+
+# Panel E: PCA by genome size (gradient)
+has_gs_pca <- pca_merged %>% filter(!is.na(gs))
+outlier    <- filter(has_gs_pca, grepl("^035", name))
+
+pE <- ggplot(has_gs_pca, aes(x = PC1, y = PC2, colour = gs)) +
+  geom_point(size = 2.5, alpha = 0.85) +
+  scale_colour_gradientn(
+    colours = rev(RColorBrewer::brewer.pal(9, "RdYlGn")),
+    limits  = c(0.7, 4.5),
+    name    = "Genome size\n(2C, pg)"
+  ) +
+  # Annotate outlier
+  geom_point(data = outlier, size = 4, shape = 21,
+             fill = NA, colour = "red", stroke = 1.2) +
+  annotate("text",
+           x = outlier$PC1 + 3.5, y = outlier$PC2 - 4.5,
+           label = "035\nM. suaveolens\n3.71 pg",
+           colour = "red", size = 3, hjust = 0) +
+  labs(x = "PC1", y = "PC2",
+       title = "E  PCA coloured by genome size") +
+  theme_pub +
+  theme(legend.position = "right")
+
+fig7b <- (pD | pE) +
+  plot_annotation(
+    title = "Figure 7 (continued). PCA with genome size overlay",
+    theme = theme(plot.title = element_text(face = "bold", size = 12))
+  )
+
+ggsave("Figure_7b_PCA_GS.pdf", fig7b, width = 14, height = 5.5,
+       device = cairo_pdf)
+ggsave("Figure_7b_PCA_GS.png", fig7b, width = 14, height = 5.5,
+       dpi = 300)
+
+message("All figures saved.")
+
